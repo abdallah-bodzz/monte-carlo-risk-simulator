@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Monte Carlo Risk Simulator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg:         #080b10;
+  --bg-card:    #0d1117;
+  --bg-input:   #111820;
+  --border:     #1c2532;
+  --border-hi:  #263040;
+  --text:       #c9d8e8;
+  --text-dim:   #6a8298;
+  --text-ghost: #2e4055;
+  --accent:     #3b9eff;
+  --accent-dim: rgba(59,158,255,0.10);
+  --red:        #f04f5e;
+  --red-dim:    rgba(240,79,94,0.10);
+  --amber:      #f59e0b;
+  --amber-dim:  rgba(245,158,11,0.10);
+  --green:      #34d399;
+  --green-dim:  rgba(52,211,153,0.10);
+  --mono: 'DM Mono', monospace;
+  --sans: 'Syne', sans-serif;
+  --r: 6px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Subtle dot-grid texture */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    radial-gradient(circle, rgba(59,158,255,0.07) 1px, transparent 1px);
+  background-size: 28px 28px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────── */
+.header {
+  position: sticky; top: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 28px; height: 56px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(8,11,16,0.94);
+  backdrop-filter: blur(16px);
+}
+
+.logo {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--sans); font-size: 14px; font-weight: 700;
+  color: var(--text); letter-spacing: -0.01em;
+}
+.logo-mark {
+  width: 28px; height: 28px;
+  background: var(--accent); border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.logo-mark svg { width: 15px; height: 15px; }
+
+.header-right { display: flex; align-items: center; gap: 14px; }
+
+.data-badge {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 11px;
+  padding: 4px 10px; border-radius: 20px;
+  border: 1px solid var(--border-hi);
+  color: var(--text-dim);
+  transition: all 0.25s;
+}
+.data-badge .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--text-ghost); flex-shrink: 0;
+  transition: all 0.3s;
+}
+.data-badge.live { border-color: rgba(52,211,153,0.28); color: var(--green); }
+.data-badge.live .dot { background: var(--green); box-shadow: 0 0 5px var(--green); animation: lp 2.5s infinite; }
+.data-badge.demo { border-color: rgba(245,158,11,0.28); color: var(--amber); }
+.data-badge.demo .dot { background: var(--amber); }
+@keyframes lp { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+.hdr-meta {
+  font-family: var(--mono); font-size: 10px; color: var(--text-ghost);
+  display: flex; align-items: center; gap: 5px;
+}
+.hdr-meta .s { opacity: 0.4; }
+
+/* ── Layout ──────────────────────────────────────────────────────────── */
+.layout {
+  position: relative; z-index: 1;
+  display: grid; grid-template-columns: 292px 1fr;
+  min-height: calc(100vh - 56px);
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────── */
+.sidebar {
+  border-right: 1px solid var(--border);
+  padding: 24px 18px;
+  display: flex; flex-direction: column; gap: 26px;
+  background: rgba(13,17,23,0.5);
+  position: sticky; top: 56px;
+  height: calc(100vh - 56px);
+  overflow-y: auto;
+}
+
+.sec-head {
+  font-family: var(--mono); font-size: 9.5px; font-weight: 500;
+  letter-spacing: 0.16em; color: var(--text-ghost);
+  text-transform: uppercase; margin-bottom: 14px;
+}
+
+/* Sliders */
+.ctrl-stack { display: flex; flex-direction: column; gap: 15px; }
+.ctrl       { display: flex; flex-direction: column; gap: 7px; }
+.ctrl-hdr   { display: flex; justify-content: space-between; align-items: baseline; }
+.ctrl-lbl   { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+.ctrl-val   { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--accent); }
+
+input[type=range] {
+  -webkit-appearance: none; width: 100%; height: 2px;
+  background: var(--border-hi); border-radius: 1px; outline: none; cursor: pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 13px; height: 13px; background: var(--accent);
+  border-radius: 50%; cursor: pointer;
+  box-shadow: 0 0 0 3px rgba(59,158,255,0.18);
+  transition: box-shadow .15s, transform .15s;
+}
+input[type=range]::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 0 5px rgba(59,158,255,0.22); transform: scale(1.15);
+}
+
+/* Distribution select + note */
+.dist-sel {
+  background: var(--bg-input); border: 1px solid var(--border-hi);
+  color: var(--text); font-family: var(--mono); font-size: 12px;
+  padding: 9px 30px 9px 10px; border-radius: var(--r); width: 100%;
+  outline: none; cursor: pointer; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236a8298'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center;
+  transition: border-color .15s;
+}
+.dist-sel:focus { border-color: var(--accent); }
+
+.dist-note {
+  font-family: var(--mono); font-size: 10px; color: var(--text-ghost);
+  line-height: 1.65; padding: 7px 10px;
+  background: var(--bg-input); border-radius: var(--r);
+  border-left: 2px solid var(--border-hi);
+  transition: border-color .2s, color .2s;
+}
+.dist-note.fat { border-left-color: var(--amber); color: var(--text-dim); }
+
+/* Weights */
+.presets {
+  display: grid; grid-template-columns: repeat(3,1fr); gap: 5px;
+  margin-bottom: 12px;
+}
+.pb {
+  background: var(--bg-input); border: 1px solid var(--border-hi);
+  color: var(--text-dim); font-family: var(--mono); font-size: 10px;
+  letter-spacing: .04em; padding: 7px 4px;
+  border-radius: var(--r); cursor: pointer; text-align: center;
+  transition: all .14s;
+}
+.pb:hover  { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.pb.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
+.w-list { display: flex; flex-direction: column; }
+.w-row  {
+  display: grid; grid-template-columns: 58px 1fr 36px;
+  align-items: center; gap: 10px;
+  padding: 7px 0; border-bottom: 1px solid var(--border);
+}
+.w-row:last-child { border-bottom: none; }
+
+.tag {
+  font-family: var(--mono); font-size: 10px; font-weight: 500;
+  color: var(--accent); background: var(--accent-dim);
+  border: 1px solid rgba(59,158,255,0.18);
+  padding: 3px 5px; border-radius: 4px; text-align: center;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tag.btc  { color: var(--amber);  background: var(--amber-dim);  border-color: rgba(245,158,11,0.18); }
+.tag.gld  { color: #e5c46e;       background: rgba(229,196,110,0.08); border-color: rgba(229,196,110,0.18); }
+.tag.aapl { color: #a8c7fa;       background: rgba(168,199,250,0.07); border-color: rgba(168,199,250,0.18); }
+
+.w-pct { font-family: var(--mono); font-size: 11px; text-align: right; color: var(--text); }
+
+.total-bar {
+  margin-top: 10px; padding: 8px 11px;
+  border-radius: var(--r); display: flex;
+  justify-content: space-between; align-items: center;
+  font-family: var(--mono); font-size: 11px;
+  border: 1px solid var(--border); transition: all .2s;
+}
+.total-bar.ok   { background: var(--green-dim); border-color: rgba(52,211,153,0.28); color: var(--green); }
+.total-bar.warn { background: var(--red-dim);   border-color: rgba(240,79,94,0.28);  color: var(--red); }
+.total-bar .lbl { opacity: .7; }
+
+/* Run button */
+.run-btn {
+  width: 100%; margin-top: auto;
+  background: var(--accent); border: none;
+  color: #000; font-family: var(--sans); font-size: 13px; font-weight: 700;
+  letter-spacing: .02em; padding: 13px; border-radius: var(--r);
+  cursor: pointer;
+  transition: background .15s, transform .12s, box-shadow .15s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.run-btn:hover:not(:disabled) {
+  background: #5baaff; transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(59,158,255,0.28);
+}
+.run-btn:active:not(:disabled) { transform: none; box-shadow: none; }
+.run-btn:disabled { opacity: .38; cursor: not-allowed; }
+.run-btn .spin {
+  width: 13px; height: 13px;
+  border: 2px solid rgba(0,0,0,0.25); border-top-color: #000;
+  border-radius: 50%; animation: sp .65s linear infinite; display: none;
+}
+.run-btn.busy .spin    { display: block; }
+.run-btn.busy .btn-txt { display: none; }
+@keyframes sp { to { transform: rotate(360deg); } }
+
+/* ── Main ────────────────────────────────────────────────────────────── */
+.main {
+  padding: 28px 28px 44px;
+  display: flex; flex-direction: column; gap: 20px;
+  overflow-y: auto;
+}
+
+/* Empty state */
+.empty {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 14px; padding: 60px 20px; text-align: center;
+}
+.empty.gone { display: none; }
+.ei { width: 52px; height: 52px; border: 1px solid var(--border-hi); border-radius: 10px; display:flex; align-items:center; justify-content:center; font-size:22px; }
+.et { font-size: 17px; font-weight: 600; color: var(--text); }
+.es { font-size: 13px; color: var(--text-dim); max-width: 360px; line-height: 1.7; }
+.eh { font-family: var(--mono); font-size: 11px; color: var(--text-ghost); background: var(--bg-card); border: 1px solid var(--border); padding: 7px 16px; border-radius: 20px; }
+
+/* Results */
+.results { display: none; flex-direction: column; gap: 20px; }
+.results.on { display: flex; }
+@keyframes fu { from{opacity:0;transform:translateY(9px)} to{opacity:1;transform:none} }
+.results.on > * { animation: fu .3s ease both; }
+.results.on > *:nth-child(1) { animation-delay: .00s; }
+.results.on > *:nth-child(2) { animation-delay: .05s; }
+.results.on > *:nth-child(3) { animation-delay: .10s; }
+.results.on > *:nth-child(4) { animation-delay: .15s; }
+.results.on > *:nth-child(5) { animation-delay: .20s; }
+.results.on > *:nth-child(6) { animation-delay: .25s; }
+
+/* Run banner */
+.banner {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 13px 18px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+}
+.banner-q { font-size: 13px; color: var(--text-dim); line-height: 1.5; }
+.banner-q strong { color: var(--text); font-weight: 600; }
+.banner-pills { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
+.pill {
+  font-family: var(--mono); font-size: 10px; color: var(--text-ghost);
+  background: var(--bg-input); border: 1px solid var(--border);
+  padding: 3px 8px; border-radius: 12px; white-space: nowrap;
+}
+.pill.pl { color: var(--green); border-color: rgba(52,211,153,0.2); }
+.pill.pd { color: var(--amber); border-color: rgba(245,158,11,0.2); }
+
+/* Metric cards */
+.mcards { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; }
+.card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 16px 14px 14px;
+  position: relative; overflow: hidden; transition: border-color .18s;
+}
+.card:hover { border-color: var(--border-hi); }
+.card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+}
+.card.cr::before { background: linear-gradient(90deg,var(--red),   transparent 70%); }
+.card.ca::before { background: linear-gradient(90deg,var(--amber), transparent 70%); }
+.card.cb::before { background: linear-gradient(90deg,var(--accent),transparent 70%); }
+.card.cg::before { background: linear-gradient(90deg,var(--green), transparent 70%); }
+.card-lbl { font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; color:var(--text-ghost); text-transform:uppercase; margin-bottom:10px; }
+.card-val { font-family:var(--mono); font-size:26px; font-weight:500; line-height:1; margin-bottom:9px; }
+.card.cr .card-val { color:var(--red);    }
+.card.ca .card-val { color:var(--amber);  }
+.card.cb .card-val { color:var(--accent); }
+.card.cg .card-val { color:var(--green);  }
+.card-dsc { font-size:11px; color:var(--text-ghost); line-height:1.55; }
+.card-dsc em { font-style:normal; color:var(--text-dim); }
+
+/* Charts */
+.charts { display:grid; grid-template-columns:1.08fr .92fr; gap:14px; }
+.cc { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--r); padding:18px; }
+.ct { font-size:13px; font-weight:600; color:var(--text); }
+.cs { font-size:11px; color:var(--text-ghost); margin:3px 0 14px; line-height:1.5; }
+.cs .cr { color:var(--red);    }
+.cs .ca { color:var(--amber);  }
+.cs .cb { color:var(--accent); }
+.cw { position:relative; height:210px; }
+
+/* Stats strip — 3 items */
+.strip { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.sp {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--r); padding:11px 12px; text-align:center;
+}
+.sp-lbl  { font-family:var(--mono); font-size:9px; letter-spacing:.12em; color:var(--text-ghost); text-transform:uppercase; margin-bottom:5px; }
+.sp-val  { font-family:var(--mono); font-size:16px; font-weight:500; color:var(--text); }
+.sp-hint { font-family:var(--mono); font-size:9px; color:var(--text-ghost); margin-top:3px; }
+
+/* Interpretation */
+.interp {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-left:3px solid var(--accent); border-radius:var(--r);
+  padding:16px 18px;
+}
+.interp-lbl  { font-family:var(--mono); font-size:9.5px; letter-spacing:.12em; color:var(--accent); text-transform:uppercase; margin-bottom:9px; }
+.interp-body { font-size:13px; color:var(--text); line-height:1.85; }
+.interp-body .hr { color:var(--red);    font-weight:600; font-family:var(--mono); }
+.interp-body .ha { color:var(--amber);  font-weight:600; font-family:var(--mono); }
+.interp-body .hb { color:var(--accent); font-weight:600; font-family:var(--mono); }
+
+/* Math block */
+.math { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--r); overflow:hidden; }
+.math-tog {
+  width:100%; background:none; border:none; padding:13px 18px;
+  display:flex; align-items:center; justify-content:space-between;
+  cursor:pointer; color:var(--text-dim); font-family:var(--mono);
+  font-size:10.5px; letter-spacing:.08em; text-transform:uppercase;
+  transition:color .15s;
+}
+.math-tog:hover { color:var(--accent); }
+.mcaret { transition:transform .22s; display:inline-block; }
+.mcaret.open { transform:rotate(90deg); }
+.math-body { max-height:0; overflow:hidden; transition:max-height .38s ease; }
+.math-body.open { max-height:1100px; border-top:1px solid var(--border); }
+.math-inner { padding:20px 18px; display:flex; flex-direction:column; gap:20px; }
+.msec h4 { font-family:var(--mono); font-size:10px; font-weight:500; letter-spacing:.1em; color:var(--accent); text-transform:uppercase; margin-bottom:8px; }
+.msec p  { font-size:12px; color:var(--text-dim); line-height:1.82; margin-bottom:7px; }
+.msec p strong { color:var(--text); }
+.fml { background:var(--bg-input); border-left:3px solid var(--accent); padding:9px 13px; border-radius:0 4px 4px 0; font-family:var(--mono); font-size:12px; color:var(--text); margin:4px 0 8px; }
+
+::-webkit-scrollbar { width:4px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--border-hi); border-radius:2px; }
+</style>
+</head>
+<body>
+
+<!-- ══ HEADER ════════════════════════════════════════════════════════ -->
+<header class="header">
+  <div class="logo">
+    <div class="logo-mark">
+      <svg viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="1"  y="9"  width="3" height="5" rx="1" fill="#000" opacity=".65"/>
+        <rect x="6"  y="5"  width="3" height="9" rx="1" fill="#000"/>
+        <rect x="11" y="2"  width="3" height="12" rx="1" fill="#000" opacity=".65"/>
+      </svg>
+    </div>
+    Monte Carlo Risk Simulator
+  </div>
+  <div class="header-right">
+    <div class="hdr-meta" id="hdrMeta"></div>
+    <div class="data-badge" id="badge">
+      <div class="dot"></div>
+      <span id="badgeLabel">Loading…</span>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ══ SIDEBAR ═════════════════════════════════════════════════════ -->
+  <aside class="sidebar">
+
+    <div>
+      <div class="sec-head">Simulation Parameters</div>
+      <div class="ctrl-stack">
+
+        <div class="ctrl">
+          <div class="ctrl-hdr">
+            <span class="ctrl-lbl">Simulations</span>
+            <span class="ctrl-val" id="v-sims">10,000</span>
+          </div>
+          <input type="range" id="s-sims" min="1000" max="50000" step="1000" value="10000"
+                 oninput="fK('s-sims','v-sims')">
+        </div>
+
+        <div class="ctrl">
+          <div class="ctrl-hdr">
+            <span class="ctrl-lbl">Horizon (trading days)</span>
+            <span class="ctrl-val" id="v-days">10</span>
+          </div>
+          <input type="range" id="s-days" min="1" max="252" step="1" value="10"
+                 oninput="g('v-days').textContent=this.value">
+        </div>
+
+        <div class="ctrl">
+          <div class="ctrl-hdr">
+            <span class="ctrl-lbl">Confidence level</span>
+            <span class="ctrl-val" id="v-conf">95%</span>
+          </div>
+          <input type="range" id="s-conf" min="80" max="99" step="1" value="95"
+                 oninput="g('v-conf').textContent=this.value+'%'">
+        </div>
+
+        <div class="ctrl">
+          <div class="ctrl-hdr" style="margin-bottom:7px">
+            <span class="ctrl-lbl">Return distribution</span>
+          </div>
+          <select class="dist-sel" id="s-dist" onchange="onDist()">
+            <option value="normal">Normal (Gaussian)</option>
+            <option value="student_t">Student-t  (fat tails, ν = 5)</option>
+          </select>
+          <div class="dist-note" id="distNote">
+            Assumes returns are normally distributed. Standard and fast — tends to underestimate extreme losses.
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div>
+      <div class="sec-head">Portfolio Weights</div>
+      <div class="presets" id="presets"></div>
+      <div class="w-list"  id="wlist"></div>
+      <div class="total-bar warn" id="totBar">
+        <span class="lbl">Total</span>
+        <span id="totVal">0%</span>
+      </div>
+    </div>
+
+    <button class="run-btn" id="runBtn" onclick="run()" disabled>
+      <div class="spin"></div>
+      <span class="btn-txt">Run Simulation</span>
+    </button>
+
+  </aside>
+
+  <!-- ══ MAIN ═════════════════════════════════════════════════════════ -->
+  <main class="main">
+
+    <!-- Welcome / empty state -->
+    <div class="empty" id="empty">
+      <div class="ei">📊</div>
+      <div class="et">Portfolio Risk Simulator</div>
+      <div class="es">
+        Pick a preset or adjust weights, configure the parameters, and click
+        <strong>Run Simulation</strong> to answer one clear question:
+      </div>
+      <div class="eh">How bad can this portfolio realistically get?</div>
+    </div>
+
+    <!-- Results — hidden until first run -->
+    <div class="results" id="results">
+
+      <!-- Run summary banner -->
+      <div class="banner">
+        <div class="banner-q" id="bannerQ">—</div>
+        <div class="banner-pills" id="bannerPills"></div>
+      </div>
+
+      <!-- 4 metric cards -->
+      <div class="mcards">
+        <div class="card cr">
+          <div class="card-lbl">Value at Risk (VaR)</div>
+          <div class="card-val" id="m-var">—</div>
+          <div class="card-dsc" id="d-var">—</div>
+        </div>
+        <div class="card ca">
+          <div class="card-lbl">Expected Shortfall (ES)</div>
+          <div class="card-val" id="m-es">—</div>
+          <div class="card-dsc" id="d-es">—</div>
+        </div>
+        <div class="card cb">
+          <div class="card-lbl">Prob. of Loss</div>
+          <div class="card-val" id="m-ploss">—</div>
+          <div class="card-dsc" id="d-ploss">—</div>
+        </div>
+        <div class="card cg">
+          <div class="card-lbl">Expected Return</div>
+          <div class="card-val" id="m-ret">—</div>
+          <div class="card-dsc" id="d-ret">—</div>
+        </div>
+      </div>
+
+      <!-- Two charts -->
+      <div class="charts">
+        <div class="cc">
+          <div class="ct">Return Distribution</div>
+          <div class="cs">
+            <span class="cr">■</span> ES tail &nbsp;·&nbsp;
+            <span class="ca">■</span> VaR zone &nbsp;·&nbsp;
+            <span class="cb">■</span> Normal range &nbsp;·&nbsp;
+            dashed lines mark the exact VaR and ES thresholds
+          </div>
+          <div class="cw"><canvas id="histCanvas"></canvas></div>
+        </div>
+        <div class="cc">
+          <div class="ct">Simulated Paths</div>
+          <div class="cs" id="pathSub">40 Monte Carlo trajectories · normalised to 1.0 at t = 0 · bright line = median</div>
+          <div class="cw"><canvas id="pathCanvas"></canvas></div>
+        </div>
+      </div>
+
+      <!-- 3-item stats strip -->
+      <div class="strip">
+        <div class="sp">
+          <div class="sp-lbl">Volatility (σ)</div>
+          <div class="sp-val" id="s-std">—</div>
+          <div class="sp-hint">Std dev of simulated returns</div>
+        </div>
+        <div class="sp">
+          <div class="sp-lbl">Worst Scenario</div>
+          <div class="sp-val" id="s-worst">—</div>
+          <div class="sp-hint">Single worst simulation</div>
+        </div>
+        <div class="sp">
+          <div class="sp-lbl">ES / VaR Ratio</div>
+          <div class="sp-val" id="s-ratio">—</div>
+          <div class="sp-hint" id="s-ratio-hint">Tail severity indicator</div>
+        </div>
+      </div>
+
+      <!-- Plain-English interpretation -->
+      <div class="interp">
+        <div class="interp-lbl">Plain-English Interpretation</div>
+        <div class="interp-body" id="interp">—</div>
+      </div>
+
+      <!-- Math explainer (collapsed) -->
+      <div class="math">
+        <button class="math-tog" onclick="toggleMath()">
+          <span>📐 &nbsp; Mathematical Foundation</span>
+          <span class="mcaret" id="mcaret">▶</span>
+        </button>
+        <div class="math-body" id="mathBody">
+          <div class="math-inner">
+
+            <div class="msec">
+              <h4>Log Returns</h4>
+              <p>We compute <strong>log returns</strong>: r_t = ln(P_t / P_{t−1}), not simple percentage returns. The critical property is that log returns are <em>additive over time</em>:</p>
+              <div class="fml">r_total = r₁ + r₂ + ··· + r_T</div>
+              <p>Simple returns compound: (1+r_total) = (1+r₁)(1+r₂)···(1+r_T). Summing them directly, as we do in Monte Carlo, would be mathematically incorrect. Log returns avoid this entirely and also distribute more symmetrically — a better fit for the distributions we use.</p>
+            </div>
+
+            <div class="msec">
+              <h4>Cholesky Decomposition — Correlated Assets</h4>
+              <p>Assets are correlated. SPY and AAPL move together; GLD moves independently of equities. Simulating each asset with <em>independent</em> random draws ignores this and misstates portfolio risk — usually overstating it.</p>
+              <p>We estimate the historical covariance matrix Σ from daily log returns, then decompose it: Σ = L · Lᵀ (Cholesky factorisation). For independent standard-normal draws Z:</p>
+              <div class="fml">X = L · Z &nbsp;&nbsp;&nbsp;⟹&nbsp;&nbsp;&nbsp; X ~ N(0, Σ)</div>
+              <p>X carries exactly the cross-asset correlation structure from historical data. This is the mathematical core of the engine — the reason the risk estimate is correct rather than just plausible.</p>
+            </div>
+
+            <div class="msec">
+              <h4>Value at Risk (VaR)</h4>
+              <div class="fml">VaR_c = −Quantile(R, 1 − c)</div>
+              <p>"With probability c, the portfolio will not lose more than VaR over the horizon." At 95%: only 5% of the 10,000 simulated paths produce a worse result. VaR is a <em>threshold</em> — it says nothing about the magnitude of losses beyond it.</p>
+            </div>
+
+            <div class="msec">
+              <h4>Expected Shortfall (ES) — the better metric</h4>
+              <div class="fml">ES_c = −E[ R &nbsp;|&nbsp; R ≤ −VaR_c ]</div>
+              <p>"Given we ARE in the worst (1−c)% of scenarios, what is the average loss?" ES is always ≥ VaR. The ratio ES/VaR quantifies tail heaviness. <strong>Basel III (2016) replaced VaR with ES as the regulatory standard</strong> precisely because ES captures how bad the tail is — not just where it starts.</p>
+            </div>
+
+            <div class="msec">
+              <h4>Student-t — Fat Tails</h4>
+              <div class="fml">Z ~ t(ν=5) &nbsp;&nbsp;&nbsp; standardised: Z / √(ν/(ν−2))</div>
+              <p>Real market returns have more extreme moves than a Gaussian predicts. Student-t with ν=5 has roughly twice the tail weight of Normal. We standardise draws (divide by √(ν/(ν−2)) so Var=1) <em>before</em> the Cholesky step — the correlation structure is applied identically either way. As ν→∞, Student-t converges to Normal.</p>
+            </div>
+
+            <div class="msec">
+              <h4>Annualisation</h4>
+              <div class="fml">μ_annual = μ_daily × 252 &nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp; Σ_annual = Σ_daily × 252</div>
+              <p>Variance scales linearly with time; volatility (std dev) scales with √252. We estimate μ and Σ from 2 years of daily log returns, scale to annualised figures for display, but the simulation uses raw daily parameters and sums T days directly — no √T shortcuts that compound error.</p>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /results -->
+  </main>
+</div>
+
+<script>
+// ── Shorthand ───────────────────────────────────────────────────────────────
+const g = id => document.getElementById(id);
+
+// ── State ───────────────────────────────────────────────────────────────────
+let tickers = [], presets = {};
+let histChart = null, pathChart = null;
+
+// ── Init ────────────────────────────────────────────────────────────────────
+async function init() {
+  try {
+    const res = await fetch('/api/assets');
+    if (!res.ok) throw new Error();
+    const d = await res.json();
+    tickers = d.tickers;
+    presets = d.presets;
+
+    // Header badge
+    const live = d.data_source === 'yfinance';
+    g('badge').className = `data-badge ${live ? 'live' : 'demo'}`;
+    g('badgeLabel').textContent = live ? 'Live · yfinance' : 'Demo · synthetic GBM';
+
+    // Header meta: obs count + date range + tickers
+    g('hdrMeta').innerHTML =
+      `<span>${d.n_obs} obs</span><span class="s">·</span>` +
+      `<span>${d.date_from} → ${d.date_to}</span><span class="s">·</span>` +
+      `<span>${d.tickers.join(', ')}</span>`;
+
+    buildSliders();
+    buildPresets();
+    applyPreset('Balanced');
+
+  } catch {
+    g('badge').className = 'data-badge';
+    g('badgeLabel').textContent = 'Server offline';
+    g('empty').querySelector('.et').textContent = 'Cannot reach server';
+    g('empty').querySelector('.es').textContent = 'Start the FastAPI server first: python main.py';
+    g('empty').querySelector('.eh').textContent = 'http://localhost:8000';
+  }
+}
+
+// ── Weight sliders ──────────────────────────────────────────────────────────
+function buildSliders() {
+  g('wlist').innerHTML = tickers.map(t => {
+    const cls   = t.includes('BTC') ? 'btc' : t.includes('GLD') ? 'gld' : t.includes('AAPL') ? 'aapl' : '';
+    const label = t.replace('-USD', '');
+    return `<div class="w-row">
+      <div class="tag ${cls}">${label}</div>
+      <input type="range" id="w-${t}" min="0" max="100" step="1" value="0" oninput="onW()">
+      <div class="w-pct" id="wp-${t}">0%</div>
+    </div>`;
+  }).join('');
+}
+
+function buildPresets() {
+  g('presets').innerHTML = Object.keys(presets).map(name =>
+    `<button class="pb" id="pb-${name}" onclick="applyPreset('${name}')">${name}</button>`
+  ).join('');
+}
+
+function applyPreset(name) {
+  const p = presets[name];
+  tickers.forEach(t => {
+    const el = g(`w-${t}`);
+    if (el) el.value = Math.round((p[t] || 0) * 100);
+  });
+  onW();
+  document.querySelectorAll('.pb').forEach(b =>
+    b.classList.toggle('active', b.id === `pb-${name}`)
+  );
+}
+
+function onW() {
+  let total = 0;
+  tickers.forEach(t => {
+    const v = +(g(`w-${t}`).value || 0);
+    total += v;
+    g(`wp-${t}`).textContent = `${v}%`;
+  });
+  const ok = Math.abs(total - 100) <= 1;
+  g('totBar').className = `total-bar ${ok ? 'ok' : 'warn'}`;
+  g('totVal').textContent = `${total}%`;
+  g('runBtn').disabled = !ok;
+
+  // Sync preset highlight
+  let matched = null;
+  for (const [name, p] of Object.entries(presets)) {
+    if (tickers.every(t =>
+      +(g(`w-${t}`).value || 0) === Math.round((p[t] || 0) * 100)
+    )) { matched = name; break; }
+  }
+  document.querySelectorAll('.pb').forEach(b =>
+    b.classList.toggle('active', matched && b.id === `pb-${matched}`)
+  );
+}
+
+function getW() {
+  const w = {};
+  tickers.forEach(t => { w[t] = +(g(`w-${t}`).value || 0) / 100; });
+  return w;
+}
+
+// ── Distribution note ────────────────────────────────────────────────────────
+function onDist() {
+  const v  = g('s-dist').value;
+  const el = g('distNote');
+  el.className = v === 'normal' ? 'dist-note' : 'dist-note fat';
+  el.textContent = v === 'normal'
+    ? 'Assumes returns are normally distributed. Standard and fast — tends to underestimate extreme losses.'
+    : 'Student-t (ν=5): ~2× heavier tails than Normal. Better reflects real market behaviour where extreme moves are more frequent than the bell curve predicts.';
+}
+
+function fK(sid, vid) {
+  g(vid).textContent = Number(g(sid).value).toLocaleString();
+}
+
+// ── Run simulation ───────────────────────────────────────────────────────────
+async function run() {
+  const btn = g('runBtn');
+  btn.classList.add('busy'); btn.disabled = true;
+
+  const payload = {
+    weights:       getW(),
+    n_simulations: +g('s-sims').value,
+    horizon_days:  +g('s-days').value,
+    confidence:    +g('s-conf').value / 100,
+    distribution:  g('s-dist').value,
+  };
+
+  try {
+    const res = await fetch('/api/simulate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const e = await res.json();
+      throw new Error(e.detail || 'Simulation failed');
+    }
+    render(await res.json());
+  } catch(e) {
+    alert('Error: ' + e.message);
+  } finally {
+    btn.classList.remove('busy'); btn.disabled = false;
+  }
+}
+
+// ── Render results ───────────────────────────────────────────────────────────
+function render(data) {
+  const m    = data.metrics;
+  const conf = Math.round(m.confidence * 100);
+  const tail = 100 - conf;
+  const T    = m.horizon_days;
+  const dist = m.distribution === 'student_t' ? 'Student-t (ν=5)' : 'Normal';
+  const live = data.data_source === 'yfinance';
+
+  g('empty').classList.add('gone');
+  const res = g('results');
+  res.classList.remove('on');
+  void res.offsetWidth;   // force reflow to replay animations
+  res.classList.add('on');
+
+  // Banner
+  g('bannerQ').innerHTML =
+    `<strong>How bad can this portfolio get?</strong>` +
+    `&thinsp;—&thinsp;${conf}% confidence · ${T}-day horizon · ${dist}`;
+  const now = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  g('bannerPills').innerHTML =
+    `<span class="pill">${Number(m.n_simulations).toLocaleString()} simulations</span>` +
+    `<span class="pill ${live?'pl':'pd'}">${live?'📡 live data':'🧪 demo data'}</span>` +
+    `<span class="pill">ran at ${now}</span>`;
+
+  // Metric cards
+  g('m-var').textContent   = `${m.var_pct.toFixed(2)}%`;
+  g('m-es').textContent    = `${m.es_pct.toFixed(2)}%`;
+  g('m-ploss').textContent = `${m.prob_loss_pct.toFixed(1)}%`;
+  g('m-ret').textContent   = `${m.mean_return_pct >= 0 ? '+' : ''}${m.mean_return_pct.toFixed(2)}%`;
+
+  g('d-var').innerHTML   = `<em>${conf}% confidence</em> · ${T}-day horizon.<br>Only ${tail}% of paths lose more than this.`;
+  g('d-es').innerHTML    = `Mean loss in the worst <em>${tail}%</em> of scenarios.<br>Always ≥ VaR. Tells you depth, not just threshold.`;
+  g('d-ploss').innerHTML = `${m.prob_loss_pct.toFixed(1)}% of <em>${Number(m.n_simulations).toLocaleString()}</em> paths ended negative.`;
+  g('d-ret').innerHTML   = `Mean outcome across all simulations<br>over <em>${T} trading day${T>1?'s':''}</em>.`;
+
+  // Stats strip
+  g('s-std').textContent   = `${m.std_pct.toFixed(2)}%`;
+  g('s-worst').textContent = `${m.worst_pct.toFixed(2)}%`;
+  const ratio = m.es_pct / m.var_pct;
+  g('s-ratio').textContent = ratio.toFixed(2);
+  g('s-ratio-hint').textContent =
+    ratio > 1.5  ? 'Heavy tail — losses beyond VaR can be much larger'
+    : ratio > 1.25 ? 'Moderate tail — typical for mixed portfolios'
+    :                'Light tail — losses beyond VaR are contained';
+
+  // Interpretation (dynamic, no boilerplate)
+  const skewNote = m.skewness < -0.25
+    ? ' Negative skewness confirms the downside tail is heavier than the upside.'
+    : m.skewness > 0.25
+    ? ' Positive skewness: the upside tail is slightly heavier.'
+    : '';
+  const distNote = m.distribution === 'student_t'
+    ? ' Student-t was used — extreme moves are weighted more heavily than under Normal.'
+    : '';
+  g('interp').innerHTML =
+    `With <span class="hb">${conf}%</span> confidence, this portfolio will not lose more than ` +
+    `<span class="hr">${m.var_pct.toFixed(2)}%</span> over the next ${T} trading day${T>1?'s':''}. ` +
+    `If you do land in that worst ${tail}%, the average loss is ` +
+    `<span class="ha">${m.es_pct.toFixed(2)}%</span> — ` +
+    `<span class="hb">${ratio.toFixed(2)}×</span> the VaR threshold.` +
+    (ratio > 1.5 ? ' That elevated ratio signals a heavy tail: losses beyond VaR can be substantially larger than the threshold itself.' : '') +
+    skewNote + distNote +
+    ` Across all ${Number(m.n_simulations).toLocaleString()} simulations, ` +
+    `<span class="hb">${m.prob_loss_pct.toFixed(1)}%</span> ended in a loss.`;
+
+  drawHist(data.histogram);
+  drawPaths(data.paths, T);
+}
+
+// ── Histogram ────────────────────────────────────────────────────────────────
+function drawHist(h) {
+  const { centers, counts, var_line, es_line } = h;
+
+  const colors = centers.map(c =>
+    c < es_line  ? 'rgba(240,79,94,0.88)'  :
+    c < var_line ? 'rgba(245,158,11,0.78)' :
+                   'rgba(59,158,255,0.38)'
+  );
+
+  if (histChart) histChart.destroy();
+  const ctx = g('histCanvas').getContext('2d');
+
+  histChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: centers.map(c => c.toFixed(2) + '%'),
+      datasets: [{
+        data: counts, backgroundColor: colors,
+        borderWidth: 0, barPercentage: 1.0, categoryPercentage: 1.0,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 480, easing: 'easeOutQuart' },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: c => `Return: ${c[0].label}`,
+            label: c => `Simulations: ${c.raw.toLocaleString()}`,
+          },
+        },
+      },
+      scales: {
+        x: { ticks: { maxTicksLimit: 8, color: '#3a5268', font: { family: 'DM Mono', size: 10 } }, grid: { color: 'rgba(28,37,50,0.65)' } },
+        y: { ticks: {                   color: '#3a5268', font: { family: 'DM Mono', size: 10 } }, grid: { color: 'rgba(28,37,50,0.65)' } },
+      },
+    },
+    // Plugin: draw VaR + ES vertical dashed lines with rotated labels
+    plugins: [{
+      id: 'riskLines',
+      afterDraw({ ctx, scales: { x, y } }) {
+        function vline(targetPct, color, label) {
+          const idx = centers.findIndex(c => c >= targetPct);
+          if (idx < 0 || idx >= centers.length) return;
+          const xPx = x.getPixelForTick(idx);
+          ctx.save();
+          ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+          ctx.setLineDash([5, 3]);
+          ctx.beginPath(); ctx.moveTo(xPx, y.top); ctx.lineTo(xPx, y.bottom);
+          ctx.stroke(); ctx.setLineDash([]);
+          // Rotated label
+          ctx.fillStyle = color; ctx.font = '500 9px DM Mono';
+          ctx.save();
+          ctx.translate(xPx - 3, y.top + 40);
+          ctx.rotate(-Math.PI / 2);
+          ctx.fillText(label, 0, 0);
+          ctx.restore(); ctx.restore();
+        }
+        // ES is a more negative number so draw it first (further left)
+        vline(es_line,  '#f04f5e', `ES ${Math.abs(es_line).toFixed(2)}%`);
+        vline(var_line, '#f59e0b', `VaR ${Math.abs(var_line).toFixed(2)}%`);
+      }
+    }],
+  });
+}
+
+// ── Paths chart ───────────────────────────────────────────────────────────────
+function drawPaths(pathData, T) {
+  const { values: paths, days } = pathData;
+  if (pathChart) pathChart.destroy();
+
+  // Median computed client-side
+  const median = days.map((_, di) => {
+    const s = paths.map(p => p[di]).sort((a, b) => a - b);
+    return s[Math.floor(s.length / 2)];
+  });
+
+  pathChart = new Chart(g('pathCanvas').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: days,
+      datasets: [
+        // Ghost paths
+        ...paths.map(p => ({
+          data: p, borderColor: 'rgba(59,158,255,0.06)',
+          borderWidth: 1, pointRadius: 0, tension: 0.35,
+        })),
+        // Baseline at 1.0
+        {
+          data: days.map(() => 1.0),
+          borderColor: 'rgba(106,130,152,0.25)',
+          borderWidth: 1, borderDash: [4, 4],
+          pointRadius: 0, tension: 0,
+        },
+        // Median (bright, on top)
+        {
+          data: median,
+          borderColor: '#3b9eff', borderWidth: 2.2,
+          pointRadius: 0, tension: 0.35,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 480, easing: 'easeOutQuart' },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: {
+        x: {
+          title: { display: true, text: 'Trading Day', color: '#3a5268', font: { family: 'DM Mono', size: 10 } },
+          ticks: { color: '#3a5268', font: { family: 'DM Mono', size: 10 } },
+          grid:  { color: 'rgba(28,37,50,0.65)' },
+        },
+        y: {
+          title: { display: true, text: 'Portfolio value (start = 1.00)', color: '#3a5268', font: { family: 'DM Mono', size: 10 } },
+          ticks: { color: '#3a5268', font: { family: 'DM Mono', size: 10 } },
+          grid:  { color: 'rgba(28,37,50,0.65)' },
+        },
+      },
+    },
+  });
+}
+
+// ── Math toggle ───────────────────────────────────────────────────────────────
+function toggleMath() {
+  const body  = g('mathBody');
+  const caret = g('mcaret');
+  const open  = body.classList.toggle('open');
+  caret.classList.toggle('open', open);
+  caret.textContent = open ? '▼' : '▶';
+}
+
+init();
+</script>
+</body>
+</html>
