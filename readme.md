@@ -1,5 +1,18 @@
 # Monte Carlo Portfolio Risk Simulator
 
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009485?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![NumPy](https://img.shields.io/badge/NumPy-013243?style=flat-square&logo=numpy&logoColor=white)](https://numpy.org)
+[![Pandas](https://img.shields.io/badge/Pandas-150458?style=flat-square&logo=pandas&logoColor=white)](https://pandas.pydata.org)
+[![yfinance](https://img.shields.io/badge/yfinance-4B8BBE?style=flat-square&logo=yahoo&logoColor=white)](https://pypi.org/project/yfinance/)
+
+[![Monte Carlo](https://img.shields.io/badge/Monte_Carlo-8B0000?style=flat-square&logo=python&logoColor=white)](https://en.wikipedia.org/wiki/Monte_Carlo_method)
+[![Cholesky](https://img.shields.io/badge/Cholesky_Decomposition-4B0082?style=flat-square)](https://en.wikipedia.org/wiki/Cholesky_decomposition)
+[![VaR & ES](https://img.shields.io/badge/VaR_%26_Expected_Shortfall-006400?style=flat-square)](https://en.wikipedia.org/wiki/Value_at_risk)
+[![Quantitative Finance](https://img.shields.io/badge/Quantitative_Finance-1E3A8A?style=flat-square&logo=chart-dot-js&logoColor=white)](https://en.wikipedia.org/wiki/Quantitative_finance)
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-2E8B57?style=flat-square)](LICENSE)
+
 A quantitative risk engine that simulates portfolio return distributions using correlated multi-asset Monte Carlo methods, and computes institutional-grade risk metrics — VaR and Expected Shortfall — with support for both Gaussian and fat-tailed Student-t distributions.
 
 > **Development note:** Core simulation logic, mathematical framework, and application architecture were designed and implemented from scratch. The frontend UI in `index.html` was generated with AI assistance (Claude by Anthropic) based on a detailed design spec.
